@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis Voice: speech to text and text to speech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cobalt: #2B3FE0;
+    --ink: #14161F;
+    --mist: #EDEFF8;
+    --paper: #FFFFFF;
+    --signal: #FF4B3E;
+    --muted: #59607A;
+    --line: #DDE0EE;
+    --display: 'Bricolage Grotesque', 'Nirmala UI', 'Segoe UI', system-ui, sans-serif;
+    --body: 'Figtree', 'Nirmala UI', 'Segoe UI', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--mist); color: var(--ink); font: 400 1rem/1.5 var(--body); min-height: 100vh; }
+  :focus-visible { outline: 3px solid var(--cobalt); outline-offset: 3px; }
+
+  /* Header */
+  .top { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; max-width: 1120px; margin: 0 auto; padding: 22px 20px 8px; }
+  .brand { display: flex; align-items: center; gap: 10px; font: 800 1.25rem var(--display); letter-spacing: -.01em; }
+  .brand-mark { display: inline-flex; gap: 3px; align-items: center; height: 24px; }
+  .brand-mark i { display: block; width: 4px; border-radius: 2px; background: var(--cobalt); }
+  .brand-mark i:nth-child(1) { height: 10px; }
+  .brand-mark i:nth-child(2) { height: 24px; }
+  .brand-mark i:nth-child(3) { height: 15px; }
+  .tabs { display: inline-flex; background: var(--paper); border: 1px solid var(--line); border-radius: 999px; padding: 4px; }
+  .tabs button { border: 0; background: transparent; color: var(--muted); font: 600 .95rem var(--body); padding: 9px 18px; border-radius: 999px; cursor: pointer; }
+  .tabs button[aria-selected="true"] { background: var(--ink); color: #fff; }
+
+  /* Layout */
+  main { max-width: 1120px; margin: 0 auto; padding: 12px 20px 24px; }
+  .workspace { display: grid; gap: 20px; }
+  @media (min-width: 860px) { .workspace { grid-template-columns: 390px 1fr; align-items: stretch; } }
+
+  /* Left: the stage */
+  .stage { background: var(--cobalt); color: #fff; border-radius: 32px; padding: 32px 28px; display: flex; flex-direction: column; gap: 16px; }
+  .stage :focus-visible { outline-color: #fff; }
+  .stage h1 { margin: 0; font: 800 clamp(2rem, 4vw, 2.6rem)/1.05 var(--display); letter-spacing: -.02em; }
+  .lead { margin: 0; color: #D7DCFF; }
+  .field { display: grid; gap: 6px; font-weight: 600; font-size: .9rem; }
+  select { width: 100%; font: 500 1rem var(--body); color: #fff; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.4); border-radius: 10px; padding: 11px 12px; }
+  select option { color: var(--ink); }
+  select:disabled { opacity: .6; }
+  input[type="range"] { width: 100%; accent-color: #fff; }
+  .row { display: flex; justify-content: space-between; align-items: baseline; }
+  .row output { font-variant-numeric: tabular-nums; color: #D7DCFF; }
+
+  .mic { width: 112px; height: 112px; border: 0; border-radius: 50%; background: #fff; color: var(--cobalt); display: grid; place-items: center; margin: 8px auto 0; cursor: pointer; transition: background .2s, color .2s; }
+  .mic svg { width: 44px; height: 44px; }
+  .mic .ico-stop { display: none; }
+  .mic[aria-pressed="true"] { background: var(--signal); color: #fff; animation: ring 1.6s infinite; }
+  .mic[aria-pressed="true"] .ico-mic { display: none; }
+  .mic[aria-pressed="true"] .ico-stop { display: block; }
+  @keyframes ring { 0% { box-shadow: 0 0 0 0 rgba(255,75,62,.55); } 100% { box-shadow: 0 0 0 26px rgba(255,75,62,0); } }
+  .mic-label { margin: 0; text-align: center; font-weight: 600; }
+  #wave { width: 100%; height: 72px; display: block; }
+  .status { margin: 0; min-height: 3em; color: #D7DCFF; font-size: .95rem; }
+  .status.error { color: #FFD3CF; }
+
+  /* Right: the page */
+  .page { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 12px; min-height: 460px; }
+  .page-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .page h2 { margin: 0; font: 700 1.25rem var(--display); }
+  .count { color: var(--muted); font-size: .9rem; }
+  .pad { flex: 1; width: 100%; min-height: 300px; resize: vertical; border: 0; outline: 0; padding: 0 4px;
+    background: repeating-linear-gradient(transparent 0 31px, var(--line) 31px 32px); background-attachment: local;
+    font: 400 1.15rem/32px var(--body); color: var(--ink); }
+  .pad:focus-visible { outline: 3px solid var(--cobalt); outline-offset: 6px; border-radius: 4px; }
+  .interim { margin: 0; min-height: 1.5em; color: var(--muted); font-style: italic; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .flash { color: var(--muted); font-size: .9rem; }
+
+  .btn { font: 600 .95rem var(--body); padding: 11px 18px; border-radius: 10px; border: 1.5px solid var(--ink); background: transparent; color: var(--ink); cursor: pointer; }
+  .btn:hover:not(:disabled) { background: rgba(20,22,31,.08); }
+  .btn.primary { background: var(--ink); color: #fff; }
+  .btn.primary:hover:not(:disabled) { background: #2a2e40; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .stage .btn { border-color: #fff; color: #fff; }
+  .stage .btn:hover:not(:disabled) { background: rgba(255,255,255,.16); }
+  .stage .btn.primary { background: #fff; color: var(--cobalt); }
+  .stage .btn.primary:hover:not(:disabled) { background: #E9ECFF; }
+  .btn-row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .check { display: flex; align-items: flex-start; gap: 10px; font-size: .95rem; }
+  .check input { width: 20px; height: 20px; margin-top: 2px; accent-color: #fff; flex: none; }
+  .reply { border-left: 4px solid var(--cobalt); background: var(--mist); border-radius: 0 10px 10px 0; padding: 10px 14px; }
+  .reply p { margin: 2px 0; }
+  .reply a { color: var(--cobalt); font-weight: 600; }
+
+  footer { max-width: 1120px; margin: 0 auto; padding: 0 20px 36px; color: var(--muted); font-size: .9rem; }
+
+  @media (prefers-reduced-motion: reduce) { .mic { animation: none !important; transition: none; } }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>Jarvis Voice</div>
+  <div class="tabs" role="tablist" aria-label="Choose a tool">
+    <button role="tab" id="tab-stt" data-tab="stt" aria-selected="true" aria-controls="view-stt">Voice to text</button>
+    <button role="tab" id="tab-tts" data-tab="tts" aria-selected="false" aria-controls="view-tts" tabindex="-1">Text to voice</button>
+  </div>
+</header>
+
+<main>
+  <!-- VOICE TO TEXT -->
+  <section id="view-stt" class="workspace" role="tabpanel" aria-labelledby="tab-stt">
+    <div class="stage">
+      <h1>Say it out loud.</h1>
+      <p class="lead">Press the mic and talk. Your words appear on the page.</p>
+
+      <label class="field">Language
+        <select id="lang">
+          <option value="en-IN">English (India)</option>
+          <option value="en-US">English (US)</option>
+          <option value="en-GB">English (UK)</option>
+          <option value="hi-IN">Hindi</option>
+          <option value="bn-IN">Bengali</option>
+          <option value="ta-IN">Tamil</option>
+          <option value="te-IN">Telugu</option>
+          <option value="mr-IN">Marathi</option>
+          <option value="gu-IN">Gujarati</option>
+          <option value="pa-Guru-IN">Punjabi</option>
+        </select>
+      </label>
+
+      <label class="check"><input type="checkbox" id="cmdMode"><span>Jarvis mode: send each phrase to the Python server as a command</span></label>
+
+      <button id="micBtn" class="mic" aria-pressed="false" aria-label="Start listening">
+        <svg class="ico-mic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 14a3.5 3.5 0 0 0 3.5-3.5v-6a3.5 3.5 0 0 0-7 0v6A3.5 3.5 0 0 0 12 14Zm6-3.5a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.92V19H9.5a1 1 0 1 0 0 2h5a1 1 0 1 0 0-2H13v-2.58A6 6 0 0 0 18 10.5Z"/></svg>
+        <svg class="ico-stop" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>
+      </button>
+      <p id="micLabel" class="mic-label">Start listening</p>
+      <canvas id="wave" aria-hidden="true"></canvas>
+      <p id="status" class="status" role="status" aria-live="polite">Ready. Press the mic to begin.</p>
+    </div>
+
+    <div class="page">
+      <div class="page-head">
+        <h2>Your text</h2>
+        <span id="count" class="count">0 words, 0 characters</span>
+      </div>
+      <textarea id="transcript" class="pad" aria-label="Your text" spellcheck="false"
+        placeholder="Your words will appear here. You can also type, and fix any mistakes by hand."></textarea>
+      <p id="interim" class="interim" aria-hidden="true"></p>
+      <div class="toolbar">
+        <button id="copyBtn" class="btn primary">Copy text</button>
+        <button id="downloadBtn" class="btn">Download .txt</button>
+        <button id="askBtn" class="btn">Ask Jarvis</button>
+        <button id="readBtn" class="btn">Read it aloud</button>
+        <button id="clearBtn" class="btn">Clear</button>
+        <span id="flash" class="flash" role="status" aria-live="polite"></span>
+      </div>
+      <div id="jarvisReply" class="reply" role="status" aria-live="polite" hidden></div>
+    </div>
+  </section>
+
+  <!-- TEXT TO VOICE -->
+  <section id="view-tts" class="workspace" role="tabpanel" aria-labelledby="tab-tts" hidden>
+    <div class="stage">
+      <h1>Type it, hear it.</h1>
+      <p class="lead">Paste any text and pick a voice. Your browser reads it aloud.</p>
+
+      <label class="field">Voice
+        <select id="voice"></select>
+      </label>
+      <label class="field">
+        <span class="row"><span>Speed</span><output id="rateOut">1.0x</output></span>
+        <input id="rate" type="range" min="0.5" max="2" step="0.1" value="1">
+      </label>
+      <label class="field">
+        <span class="row"><span>Pitch</span><output id="pitchOut">1.0</output></span>
+        <input id="pitch" type="range" min="0" max="2" step="0.1" value="1">
+      </label>
+
+      <div class="btn-row">
+        <button id="speakBtn" class="btn primary">Speak</button>
+        <button id="pauseBtn" class="btn" disabled>Pause</button>
+        <button id="stopBtn" class="btn" disabled>Stop</button>
+      </div>
+      <p id="ttsStatus" class="status" role="status" aria-live="polite">Type some text, then press Speak.</p>
+    </div>
+
+    <div class="page">
+      <div class="page-head">
+        <h2>Text to read</h2>
+        <span id="ttsCount" class="count">0 words</span>
+      </div>
+      <textarea id="ttsText" class="pad" aria-label="Text to read" spellcheck="false"
+        placeholder="Type or paste your text here."></textarea>
+      <div class="toolbar">
+        <button id="ttsClear" class="btn">Clear</button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>Works best in Chrome and Edge. Turning speech into text needs an internet connection.</footer>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const STORE_KEY = 'jarvis-voice-transcript';
+
+/* ---------- Tabs ---------- */
+let wantListening = false;
+const tabs = document.querySelectorAll('[role="tab"]');
+
+function showTab(name) {
+  tabs.forEach((t) => {
+    const on = t.dataset.tab === name;
+    t.setAttribute('aria-selected', String(on));
+    t.tabIndex = on ? 0 : -1;
+  });
+  $('#view-stt').hidden = name !== 'stt';
+  $('#view-tts').hidden = name !== 'tts';
+  if (name !== 'stt' && wantListening) stopListening();
+  if (name !== 'tts' && 'speechSynthesis' in window) { speechSynthesis.cancel(); resetTtsButtons(); }
+}
+tabs.forEach((t) => t.addEventListener('click', () => showTab(t.dataset.tab)));
+
+/* ---------- Voice to text ---------- */
+const langSel = $('#lang');
+const micBtn = $('#micBtn');
+const transcript = $('#transcript');
+const interimEl = $('#interim');
+const statusEl = $('#status');
+let rec = null;
+
+function setStatus(msg, isError) {
+  statusEl.textContent = msg;
+  statusEl.classList.toggle('error', !!isError);
+}
+
+function onTranscriptChange() {
+  const t = transcript.value.trim();
+  const words = t ? t.split(/\s+/).length : 0;
+  $('#count').textContent = words + (words === 1 ? ' word, ' : ' words, ') + t.length + ' characters';
+  ['copyBtn', 'downloadBtn', 'askBtn', 'readBtn', 'clearBtn'].forEach((id) => { $('#' + id).disabled = !t; });
+  try { localStorage.setItem(STORE_KEY, transcript.value); } catch (_) {}
+}
+
+function setListeningUI(on) {
+  micBtn.setAttribute('aria-pressed', String(on));
+  micBtn.setAttribute('aria-label', on ? 'Stop listening' : 'Start listening');
+  $('#micLabel').textContent = on ? 'Stop listening' : 'Start listening';
+  langSel.disabled = on;
+}
+
+function startListening() {
+  if (!SpeechRec) {
+    setStatus('This browser cannot turn speech into text. Open this page in Chrome or Edge.', true);
+    return;
+  }
+  rec = new SpeechRec();
+  rec.lang = langSel.value;
+  rec.continuous = true;
+  rec.interimResults = true;
+
+  rec.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const res = e.results[i];
+      // In Jarvis mode, ignore the sound of Jarvis speaking.
+      if ($('#cmdMode').checked && hasTts && speechSynthesis.speaking) continue;
+      if (res.isFinal) {
+        const piece = res[0].transcript.trim();
+        if (piece) {
+          const cur = transcript.value;
+          transcript.value = cur + (cur && !/\s$/.test(cur) ? ' ' : '') + piece;
+          if ($('#cmdMode').checked) askJarvis(piece);
+        }
+      } else {
+        interim += res[0].transcript;
+      }
+    }
+    interimEl.textContent = interim;
+    transcript.scrollTop = transcript.scrollHeight;
+    onTranscriptChange();
+  };
+
+  rec.onerror = (e) => {
+    const fatal = {
+      'not-allowed': 'The microphone is blocked. Click the lock icon in the address bar, allow the microphone, then press the mic again.',
+      'service-not-allowed': 'The microphone is blocked. Click the lock icon in the address bar, allow the microphone, then press the mic again.',
+      'audio-capture': 'No microphone was found. Connect one and press the mic again.',
+      'network': 'The speech service cannot be reached. Check your internet connection and try again.',
+      'language-not-supported': 'This language is not supported in your browser. Pick another language.'
+    };
+    if (fatal[e.error]) {
+      wantListening = false;
+      setListeningUI(false);
+      stopMeter();
+      setStatus(fatal[e.error], true);
+    }
+  };
+
+  rec.onend = () => {
+    interimEl.textContent = '';
+    if (wantListening) {
+      // The browser stops after a pause in speech, so start again.
+      try { rec.start(); } catch (_) { setTimeout(() => { if (wantListening) { try { rec.start(); } catch (_) {} } }, 300); }
+    }
+  };
+
+  wantListening = true;
+  try { rec.start(); } catch (_) {}
+  setListeningUI(true);
+  setStatus('Listening in ' + langSel.selectedOptions[0].text + '. Speak now.');
+  startMeter();
+}
+
+function stopListening() {
+  wantListening = false;
+  if (rec) { try { rec.stop(); } catch (_) {} }
+  setListeningUI(false);
+  stopMeter();
+  setStatus('Stopped. Your text stays on the page.');
+}
+
+micBtn.addEventListener('click', () => (wantListening ? stopListening() : startListening()));
+transcript.addEventListener('input', onTranscriptChange);
+
+function flash(msg) {
+  const el = $('#flash');
+  el.textContent = msg;
+  clearTimeout(flash.t);
+  flash.t = setTimeout(() => { el.textContent = ''; }, 2500);
+}
+
+$('#copyBtn').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(transcript.value); }
+  catch (_) { transcript.select(); document.execCommand('copy'); }
+  flash('Copied.');
+});
+
+$('#downloadBtn').addEventListener('click', () => {
+  const blob = new Blob([transcript.value], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'transcript.txt';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  flash('Downloaded.');
+});
+
+$('#clearBtn').addEventListener('click', () => {
+  transcript.value = '';
+  interimEl.textContent = '';
+  onTranscriptChange();
+  flash('Cleared.');
+});
+
+$('#readBtn').addEventListener('click', () => {
+  $('#ttsText').value = transcript.value;
+  onTtsChange();
+  showTab('tts');
+  $('#ttsText').focus();
+});
+
+/* ---------- Ask the Python server ---------- */
+const API_BASE = '';   // same server as the page. For a separate backend use e.g. 'https://your-app.onrender.com'
+const replyBox = $('#jarvisReply');
+
+async function askJarvis(text) {
+  text = (text || '').trim();
+  if (!text) { flash('Say or type a command first.'); return; }
+  replyBox.hidden = false;
+  replyBox.textContent = '';
+  const you = document.createElement('p');
+  you.textContent = 'You: ' + text;
+  const bot = document.createElement('p');
+  bot.textContent = 'Jarvis is thinking...';
+  replyBox.append(you, bot);
+  try {
+    const res = await fetch(API_BASE + '/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, tz: Intl.DateTimeFormat().resolvedOptions().timeZone })
+    });
+    if (!res.ok) throw new Error('bad status');
+    const data = await res.json();
+    bot.textContent = 'Jarvis: ' + data.reply;
+    if (data.url) {
+      const a = document.createElement('a');
+      a.href = data.url; a.target = '_blank'; a.rel = 'noopener';
+      a.textContent = 'Open ' + new URL(data.url).hostname;
+      replyBox.append(a);
+      window.open(data.url, '_blank', 'noopener');
+    }
+    speakReply(data.reply);
+    if (data.quit && wantListening) stopListening();
+  } catch (_) {
+    bot.textContent = 'Jarvis: I cannot reach the Python server. Run "python app.py" and open http://127.0.0.1:5000 in your browser.';
+  }
+}
+
+function speakReply(text) {
+  if (!hasTts) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const v = voices[voiceSel.value];
+  if (v) { u.voice = v; u.lang = v.lang; }
+  speechSynthesis.speak(u);
+}
+
+$('#askBtn').addEventListener('click', () => {
+  const picked = transcript.value.substring(transcript.selectionStart, transcript.selectionEnd).trim();
+  askJarvis(picked || transcript.value);
+});
+
+/* ---------- Live sound bars ---------- */
+const canvas = $('#wave');
+const ctx = canvas.getContext('2d');
+let audioCtx = null, analyser = null, micStream = null, freq = null, raf = 0;
+
+function sizeCanvas() {
+  const r = canvas.getBoundingClientRect();
+  const d = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(r.width * d));
+  canvas.height = Math.max(1, Math.round(r.height * d));
+}
+
+function drawBars() {
+  const w = canvas.width, h = canvas.height, n = 28;
+  const gap = w / n, bw = gap * 0.55;
+  ctx.clearRect(0, 0, w, h);
+  if (analyser) analyser.getByteFrequencyData(freq);
+  for (let i = 0; i < n; i++) {
+    const v = analyser ? freq[Math.floor((i * freq.length * 0.6) / n)] / 255 : 0;
+    const bh = Math.max(h * 0.06, v * h * 0.95);
+    const x = i * gap + (gap - bw) / 2, y = (h - bh) / 2;
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.35 + v * 0.65).toFixed(2) + ')';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, bw, bh, bw / 2); else ctx.rect(x, y, bw, bh);
+    ctx.fill();
+  }
+}
+
+function loop() { drawBars(); raf = requestAnimationFrame(loop); }
+
+async function startMeter() {
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 128;
+    audioCtx.createMediaStreamSource(micStream).connect(analyser);
+    freq = new Uint8Array(analyser.frequencyBinCount);
+  } catch (_) { analyser = null; }
+  if (!wantListening) { stopMeter(); return; }
+  cancelAnimationFrame(raf);
+  loop();
+}
+
+function stopMeter() {
+  cancelAnimationFrame(raf);
+  if (micStream) micStream.getTracks().forEach((t) => t.stop());
+  if (audioCtx) audioCtx.close();
+  micStream = audioCtx = analyser = null;
+  drawBars();
+}
+
+/* ---------- Text to voice ---------- */
+const hasTts = 'speechSynthesis' in window;
+const ttsText = $('#ttsText');
+const voiceSel = $('#voice');
+const ttsStatus = $('#ttsStatus');
+let voices = [];
+
+function onTtsChange() {
+  const t = ttsText.value.trim();
+  const words = t ? t.split(/\s+/).length : 0;
+  $('#ttsCount').textContent = words + (words === 1 ? ' word' : ' words');
+}
+
+function loadVoices() {
+  if (!hasTts) return;
+  voices = speechSynthesis.getVoices();
+  const keep = voiceSel.value;
+  voiceSel.innerHTML = '';
+  voices.forEach((v, i) => {
+    const o = document.createElement('option');
+    o.value = i;
+    o.textContent = v.name + ' (' + v.lang + ')';
+    voiceSel.appendChild(o);
+  });
+  if (keep && voices[keep]) { voiceSel.value = keep; return; }
+  const pref = voices.findIndex((v) => v.lang === 'en-IN') >= 0 ? voices.findIndex((v) => v.lang === 'en-IN')
+    : voices.findIndex((v) => v.lang.startsWith((navigator.language || 'en').slice(0, 2)));
+  if (pref >= 0) voiceSel.value = pref;
+}
+
+function resetTtsButtons() {
+  $('#pauseBtn').disabled = true;
+  $('#stopBtn').disabled = true;
+  $('#pauseBtn').textContent = 'Pause';
+}
+
+function speakText() {
+  if (!hasTts) { ttsStatus.textContent = 'This browser cannot read text aloud. Use Chrome or Edge.'; ttsStatus.classList.add('error'); return; }
+  const text = ttsText.value.trim();
+  if (!text) { ttsStatus.textContent = 'Type some text first, then press Speak.'; return; }
+  ttsStatus.classList.remove('error');
+  speechSynthesis.cancel();
+
+  let voice = voices[voiceSel.value];
+  // Hindi text needs a Hindi voice to sound right.
+  if (/[\u0900-\u097F]/.test(text) && (!voice || !voice.lang.startsWith('hi'))) {
+    const hi = voices.find((v) => v.lang.startsWith('hi'));
+    if (hi) { voice = hi; voiceSel.value = voices.indexOf(hi); }
+    else { ttsStatus.textContent = 'No Hindi voice is installed. Add one in your system settings for better results.'; }
+  }
+
+  const chunks = (text.match(/[^.!?\u0964\n]+[.!?\u0964]*/g) || [text]).map((c) => c.trim()).filter(Boolean);
+  chunks.forEach((c, i) => {
+    const u = new SpeechSynthesisUtterance(c);
+    if (voice) { u.voice = voice; u.lang = voice.lang; }
+    u.rate = parseFloat($('#rate').value);
+    u.pitch = parseFloat($('#pitch').value);
+    if (i === chunks.length - 1) u.onend = () => { ttsStatus.textContent = 'Done.'; resetTtsButtons(); };
+    u.onerror = (e) => { if (e.error !== 'canceled' && e.error !== 'interrupted') { ttsStatus.textContent = 'Could not play this text. Try another voice.'; ttsStatus.classList.add('error'); resetTtsButtons(); } };
+    speechSynthesis.speak(u);
+  });
+  ttsStatus.textContent = 'Speaking...';
+  $('#pauseBtn').disabled = false;
+  $('#stopBtn').disabled = false;
+}
+
+$('#speakBtn').addEventListener('click', speakText);
+$('#pauseBtn').addEventListener('click', () => {
+  if (speechSynthesis.paused) { speechSynthesis.resume(); $('#pauseBtn').textContent = 'Pause'; ttsStatus.textContent = 'Speaking...'; }
+  else { speechSynthesis.pause(); $('#pauseBtn').textContent = 'Resume'; ttsStatus.textContent = 'Paused.'; }
+});
+$('#stopBtn').addEventListener('click', () => { speechSynthesis.cancel(); resetTtsButtons(); ttsStatus.textContent = 'Stopped.'; });
+$('#ttsClear').addEventListener('click', () => { ttsText.value = ''; onTtsChange(); });
+$('#rate').addEventListener('input', (e) => { $('#rateOut').textContent = parseFloat(e.target.value).toFixed(1) + 'x'; });
+$('#pitch').addEventListener('input', (e) => { $('#pitchOut').textContent = parseFloat(e.target.value).toFixed(1); });
+ttsText.addEventListener('input', onTtsChange);
+if (hasTts) { loadVoices(); speechSynthesis.onvoiceschanged = loadVoices; }
+
+/* ---------- Start ---------- */
+try { transcript.value = localStorage.getItem(STORE_KEY) || ''; } catch (_) {}
+if (!SpeechRec) setStatus('This browser cannot turn speech into text. Open this page in Chrome or Edge.', true);
+onTranscriptChange();
+onTtsChange();
+sizeCanvas();
+drawBars();
+window.addEventListener('resize', () => { sizeCanvas(); drawBars(); });
+</script>
+</body>
+</html>
