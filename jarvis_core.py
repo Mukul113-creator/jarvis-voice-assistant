@@ -8,6 +8,7 @@ try:
 except ImportError:  # very old Python
     ZoneInfo = None
 
+
 SITES = {
     
     "youtube": ("YouTube", "https://www.youtube.com"),
